@@ -44,7 +44,12 @@ def clean_pedidos(raw_data: List[ExampleData]) -> List[BaseModel]:
         "approved": "aprovado"
     }
 
-    df_pedidos["order_status"] = df_pedidos["order_status"].map(order_status_pt)
+    # Garantir que todos os dados estejam corretos
+    df_pedidos["order_status"] = df_pedidos["order_status"] \
+    .str.lower() \
+    .str.strip() \
+    .str.strip() \
+    .map(order_status_pt) # Altera os valores seguindo o dict
 
     """
     Criação colunas derivadas
