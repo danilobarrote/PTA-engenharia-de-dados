@@ -1,9 +1,10 @@
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Any
-from app.schemas.example import ExampleData, BaseModel
+from datetime import datetime
+from app.schemas.example import PedidoSchema, PedidoLimpoSchema
 
-def clean_pedidos(raw_data: List[ExampleData]) -> List[BaseModel]:
+def clean_pedidos(raw_data: List[PedidoSchema]) -> List[PedidoLimpoSchema]:
 
     data_as_dicts = [record.model_dump() for record in raw_data]
 
@@ -28,6 +29,45 @@ def clean_pedidos(raw_data: List[ExampleData]) -> List[BaseModel]:
                 format="%d/%m/%Y %H:%M:%S",
                 errors='coerce'
         )
+    
+
+    """
+    Tratamento de Dados Nulos
+    """
+
+    # Pedidos entregues e sem data de entrega
+
+    # Adicionar a mediana na data de compra
+    mediana_tempo_entrega = ((df_pedidos["order_delivered_customer_date"] - df_pedidos["order_purchase_timestamp"]).dt.days).median()
+    delta_mediana = pd.to_timedelta(mediana_tempo_entrega, unit='D')
+
+    filtro_entrega_inconsistente = (df_pedidos['order_status'] == 'delivered') & (df_pedidos['order_delivered_customer_date'].isnull())
+
+    df_pedidos.loc[filtro_entrega_inconsistente, 'order_delivered_customer_date'] = \
+        df_pedidos.loc[filtro_entrega_inconsistente, 'order_purchase_timestamp'] + delta_mediana
+
+
+    # Pedidos entregues/enviados e sem data de envio
+
+    # 1. Identificar os 2 pedidos com inconsistência de envio
+    filtro_envio_inconsistente = (df_pedidos['order_delivered_carrier_date'].isnull()) & \
+                                (df_pedidos['order_status'].isin(['shipped', 'delivered']))
+
+    # 2. Imputar a data de envio com a data de aprovação (data anterior válida conhecida)
+    df_pedidos.loc[filtro_envio_inconsistente, 'order_delivered_carrier_date'] = \
+        df_pedidos.loc[filtro_envio_inconsistente, 'order_approved_at']
+    
+
+    # Pedidos entreges/enviados e sem data de aprovação
+
+    # 1. Identificar os 14 pedidos com inconsistência de aprovação
+    filtro_aprovacao_inconsistente = (df_pedidos['order_approved_at'].isnull()) & \
+                                    (~df_pedidos['order_status'].isin(['created', 'canceled']))
+
+    # 2. Imputar a data de aprovação com o timestamp da compra (data anterior válida conhecida)
+    df_pedidos.loc[filtro_aprovacao_inconsistente, 'order_approved_at'] = \
+        df_pedidos.loc[filtro_aprovacao_inconsistente, 'order_purchase_timestamp']
+
 
     """
     Padronização de Texto
@@ -36,7 +76,7 @@ def clean_pedidos(raw_data: List[ExampleData]) -> List[BaseModel]:
     order_status_pt = {
         "delivered": "entregue",
         "invoiced": "faturado",
-        "shipped": "strftienviado",
+        "shipped": "enviado",
         "processing": "em processamento",
         "unavailable": "indisponível",
         "canceled": "cancelado",
@@ -84,4 +124,4 @@ def clean_pedidos(raw_data: List[ExampleData]) -> List[BaseModel]:
     )
 
     cleaned_records = df_pedidos.to_dict('records')
-    return [BaseModel(**record) for record in cleaned_records]
+    return [PedidoLimpoSchema(**record) for record in cleaned_records]
