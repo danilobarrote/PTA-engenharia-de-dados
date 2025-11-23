@@ -2,7 +2,8 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Any
 from datetime import datetime
-from app.schemas.example import PedidoSchema, PedidoLimpoSchema
+import asyncio
+from app.schemas.data_schemas import PedidoSchema, PedidoLimpoSchema
 
 def clean_pedidos(raw_data: List[PedidoSchema]) -> List[PedidoLimpoSchema]:
 
@@ -122,6 +123,9 @@ def clean_pedidos(raw_data: List[PedidoSchema]) -> List[PedidoLimpoSchema]:
         status_entrega,
         default=""
     )
-
+    
     cleaned_records = df_pedidos.to_dict('records')
     return [PedidoLimpoSchema(**record) for record in cleaned_records]
+
+async def clean_pedidos_async(records: List[PedidoSchema]) -> List[PedidoLimpoSchema]:
+    return await asyncio.to_thread(clean_pedidos, records)
