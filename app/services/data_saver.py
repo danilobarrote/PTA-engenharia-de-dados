@@ -63,12 +63,10 @@ def save_itens_sync(records: List[ItemPedidoLimpoSchema]) -> int:
 
 # -------------------------------------------------
 # Funções assíncronas de orquestração
-# (limpeza mínima + persistência)
 # -------------------------------------------------
 async def process_and_persist_vendedores(
     raw_records: List[VendedorSchema],
 ) -> List[VendedorLimpoSchema]:
-    # por enquanto, “limpeza” = apenas tipar como VendedorLimpoSchema
     cleaned_records = [VendedorLimpoSchema(**r.model_dump()) for r in raw_records]
     await asyncio.to_thread(save_vendedores_sync, cleaned_records)
     return cleaned_records

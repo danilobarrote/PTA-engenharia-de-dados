@@ -3,6 +3,10 @@ from typing import List, Optional
 from datetime import datetime
 
 
+# ==========================
+# SCHEMAS BRUTOS (ENTRADA)
+# ==========================
+
 class PedidoSchema(BaseModel):
     order_id: str
     customer_id: str
@@ -43,6 +47,10 @@ class ItemPedidoSchema(BaseModel):
     freight_value: Optional[float]
 
 
+# ==========================
+# SCHEMAS LIMPOS (SAÍDA)
+# ==========================
+
 class PedidoLimpoSchema(PedidoSchema):
     tempo_entrega_dias: Optional[int]
     tempo_entrega_estimado_dias: Optional[int]
@@ -62,6 +70,10 @@ class ItemPedidoLimpoSchema(ItemPedidoSchema):
     pass
 
 
+# ==========================
+# ENVELOPE DE ENTRADA
+# ==========================
+
 class SchemaRecepcaoDatasets(BaseModel):
     dataset1_vendedores: List[VendedorSchema] = Field(
         ..., description="Lista de Vendedores."
@@ -77,8 +89,13 @@ class SchemaRecepcaoDatasets(BaseModel):
     )
 
 
+# ==========================
+# ENVELOPE DE SAÍDA
+# ==========================
+
 class AllDatasetsLimpos(BaseModel):
     vendedores: List[VendedorLimpoSchema]
     produtos: List[ProdutosLimpoSchema]
     transacoes: List[ItemPedidoLimpoSchema]
-    pedidos: List[PedidoSchema]  # <- aqui usando PedidoSchema, sem enriquecer
+    # aqui ainda mandamos pedidos brutos (schema de entrada)
+    pedidos: List[PedidoSchema]

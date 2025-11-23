@@ -14,6 +14,7 @@ from app.schemas.data_schemas import (
 
 router = APIRouter()
 
+
 @router.post(
     "/process-dataset",
     response_model=AllDatasetsLimpos,
@@ -21,16 +22,18 @@ router = APIRouter()
 )
 async def process_raw_datasets(datasets: SchemaRecepcaoDatasets):
 
+    # Processa em paralelo apenas vendedores, produtos e itens
     results = await asyncio.gather(
         process_and_persist_vendedores(datasets.dataset1_vendedores),
         process_and_persist_produtos(datasets.dataset2_clientes),
-        process_and_persist_itens(datasets.dataset3_itens),  # <-- nome certo
+        process_and_persist_itens(datasets.dataset3_itens),
         return_exceptions=True,
     )
 
     vendedores_limpos, produtos_limpos, transacoes_limpas = results
 
-    pedidos_brutos = datasets.dataset4_pedidos  # sem tratamento, responsabilidade do Gabriel
+    # Pedidos ficam brutos mesmo – responsabilidade do Gabriel
+    pedidos_brutos = datasets.dataset4_pedidos
 
     errors = [str(r) for r in results if isinstance(r, Exception)]
     if errors:
