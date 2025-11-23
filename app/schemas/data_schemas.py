@@ -39,13 +39,13 @@ class ItemPedidoSchema(BaseModel):
     freight_value: Optional[float]
 
 class SchemaRecepcaoDatasets(BaseModel):
-    dataset1_vendedores: List[VendedorSchema]
-    dataset2_clientes: List[ProdutoSchema]
-    dataset3_transacoes: List[ItemPedidoSchema]
-    dataset4_pedidos: List[PedidoSchema]
+    dataset1_vendedores: List[VendedorSchema] = Field(..., description="Lista de Vendedores.")
+    dataset2_clientes: List[ProdutoSchema] = Field(..., description="Lista de Produtos.")
+    dataset3_transacoes: List[ItemPedidoSchema] = Field(..., description="Lista de Itens de Pedidos.")
+    dataset4_pedidos: List[PedidoSchema] = Field(..., description="Lista de Pedidos.")
 
 class RespostaStatusProcessamento(BaseModel):
     status: str = "Recebido"
-    message: str = "Dados recebidos com sucesso. Processamento inicial (mock) concluído."
+    message: str = "Dados recebidos com sucesso. Persistência de Stage iniciada."
     datasets_received: int = 4
     total_records_processed: int
