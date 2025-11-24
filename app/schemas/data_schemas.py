@@ -97,5 +97,4 @@ class AllDatasetsLimpos(BaseModel):
     vendedores: List[VendedorLimpoSchema]
     produtos: List[ProdutosLimpoSchema]
     transacoes: List[ItemPedidoLimpoSchema]
-    # aqui ainda mandamos pedidos brutos (schema de entrada)
-    pedidos: List[PedidoSchema]
+    pedidos: List[PedidoLimpoSchema]
