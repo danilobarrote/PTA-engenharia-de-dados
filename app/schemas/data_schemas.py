@@ -1,6 +1,11 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from datetime import datetime
+
+
+# ==========================
+# SCHEMAS BRUTOS (ENTRADA)
+# ==========================
 
 class PedidoSchema(BaseModel):
     order_id: str
@@ -12,11 +17,6 @@ class PedidoSchema(BaseModel):
     order_delivered_customer_date: Optional[datetime]
     order_estimated_delivery_date: datetime
 
-class PedidoLimpoSchema(PedidoSchema):
-    tempo_entrega_dias: Optional[int]
-    tempo_entrega_estimado_dias: Optional[int]
-    diferenca_entrega_dias: Optional[float]
-    entrega_no_prazo: str
 
 class ProdutoSchema(BaseModel):
     product_id: str
@@ -29,8 +29,6 @@ class ProdutoSchema(BaseModel):
     product_height_cm: Optional[float]
     product_width_cm: Optional[float]
 
-class ProdutosLimpoSchema(ProdutoSchema):
-    pass
 
 class VendedorSchema(BaseModel):
     seller_id: str
@@ -38,8 +36,6 @@ class VendedorSchema(BaseModel):
     seller_city: str
     seller_state: str
 
-class VendedorLimpoSchema(VendedorSchema):
-    pass
 
 class ItemPedidoSchema(BaseModel):
     order_id: str
@@ -50,17 +46,56 @@ class ItemPedidoSchema(BaseModel):
     price: Optional[float]
     freight_value: Optional[float]
 
+
+# ==========================
+# SCHEMAS LIMPOS (SAÍDA)
+# ==========================
+
+class PedidoLimpoSchema(PedidoSchema):
+    tempo_entrega_dias: Optional[int]
+    tempo_entrega_estimado_dias: Optional[int]
+    diferenca_entrega_dias: Optional[float]
+    entrega_no_prazo: str
+
+
+class ProdutosLimpoSchema(ProdutoSchema):
+    pass
+
+
+class VendedorLimpoSchema(VendedorSchema):
+    pass
+
+
 class ItemPedidoLimpoSchema(ItemPedidoSchema):
     pass
 
+
+# ==========================
+# ENVELOPE DE ENTRADA
+# ==========================
+
 class SchemaRecepcaoDatasets(BaseModel):
-    dataset1_vendedores: List[VendedorSchema] = Field(..., description="Lista de Vendedores.")
-    dataset2_clientes: List[ProdutoSchema] = Field(..., description="Lista de Produtos.")
-    dataset3_transacoes: List[ItemPedidoSchema] = Field(..., description="Lista de Itens de Pedidos.")
-    dataset4_pedidos: List[PedidoSchema] = Field(..., description="Lista de Pedidos.")
+    dataset1_vendedores: List[VendedorSchema] = Field(
+        ..., description="Lista de Vendedores."
+    )
+    dataset2_clientes: List[ProdutoSchema] = Field(
+        ..., description="Lista de Produtos."
+    )
+    dataset3_itens: List[ItemPedidoSchema] = Field(
+        ..., description="Lista de Itens de Pedidos."
+    )
+    dataset4_pedidos: List[PedidoSchema] = Field(
+        ..., description="Lista de Pedidos."
+    )
+
+
+# ==========================
+# ENVELOPE DE SAÍDA
+# ==========================
 
 class AllDatasetsLimpos(BaseModel):
     vendedores: List[VendedorLimpoSchema]
     produtos: List[ProdutosLimpoSchema]
-    itens: List[ItemPedidoLimpoSchema]
-    pedidos: List[PedidoLimpoSchema]
+    transacoes: List[ItemPedidoLimpoSchema]
+    # aqui ainda mandamos pedidos brutos (schema de entrada)
+    pedidos: List[PedidoSchema]
