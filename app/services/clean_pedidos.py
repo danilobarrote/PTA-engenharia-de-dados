@@ -86,11 +86,17 @@ def clean_pedidos(raw_data: List[PedidoSchema]) -> List[PedidoLimpoSchema]:
     }
 
     # Garantir que todos os dados estejam corretos
-    df_pedidos["order_status"] = df_pedidos["order_status"] \
-    .str.lower() \
-    .str.strip() \
-    .str.strip() \
-    .map(order_status_pt) # Altera os valores seguindo o dict
+    df_pedidos["order_status"] = (
+        df_pedidos["order_status"]
+        .astype("string")
+        .str.lower()
+        .str.strip()
+        .map(order_status_pt)
+    )
+
+    # Se algum status não estiver no dicionário, evita ficar como NaN
+    df_pedidos["order_status"] = df_pedidos["order_status"].fillna("status_desconhecido")
+
 
     """
     Criação colunas derivadas

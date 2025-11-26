@@ -14,12 +14,11 @@ from app.schemas.data_schemas import (
     PedidoLimpoSchema 
 )
 
-from app.services import (
-    clean_pedidos,
-    clean_produtos,
-    clean_itens,
-    clean_vendedores,
-)
+from app.services.clean_pedidos import clean_pedidos
+from app.services.clean_produtos import clean_produtos
+from app.services.clean_itens import clean_itens
+from app.services.clean_vendedores import clean_vendedores
+
 
 # -------------------------------------------------
 # Helper: garantir que a pasta data/ exista
