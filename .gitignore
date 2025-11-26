@@ -18,3 +18,5 @@ output/
 # Docker
 *.log
 docker-data/
+
+credentials.json
