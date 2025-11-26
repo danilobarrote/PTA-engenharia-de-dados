@@ -1,137 +1,183 @@
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Any
-from datetime import datetime
 import asyncio
+from typing import List
+
 from app.schemas.data_schemas import PedidoSchema, PedidoLimpoSchema
 
+
 def clean_pedidos(raw_data: List[PedidoSchema]) -> List[PedidoLimpoSchema]:
-
-    data_as_dicts = [record.model_dump() for record in raw_data]
-
-    df_pedidos = pd.DataFrame(data_as_dicts)
-
     """
-    Datas e Timestamp
+    Limpeza da planilha de Pedidos.
+    - Padroniza colunas de data/hora
+    - Corrige inconsistências de datas (entrega, envio, aprovação)
+    - Padroniza o campo order_status
+    - Cria colunas derivadas:
+        * tempo_entrega_dias
+        * tempo_entrega_estimado_dias
+        * diferenca_entrega_dias
+        * entrega_no_prazo
+    - Garante que NaN/NaT sejam convertidos em None para os Schemas Pydantic.
     """
 
-    # Padronizando colunas de data e hora
+    if not raw_data:
+        return []
 
-    colunas_datas = ["order_purchase_timestamp", "order_approved_at", "order_delivered_carrier_date", "order_delivered_customer_date", "order_estimated_delivery_date"]
+    # -------------------------
+    # 1) Converter lista de Schemas -> DataFrame
+    # -------------------------
+    df = pd.DataFrame([r.model_dump() for r in raw_data])
+
+    # -------------------------
+    # 2) Datas e Timestamp
+    # -------------------------
+    colunas_datas = [
+        "order_purchase_timestamp",
+        "order_approved_at",
+        "order_delivered_carrier_date",
+        "order_delivered_customer_date",
+        "order_estimated_delivery_date",
+    ]
 
     for coluna in colunas_datas:
+        if coluna in df.columns:
+            df[coluna] = pd.to_datetime(df[coluna], errors="coerce")
 
-        df_pedidos[coluna] = pd.to_datetime(df_pedidos[coluna], format="%Y-%m-%d %H:%M:%S")
-        df_pedidos[coluna] = df_pedidos[coluna].dt.strftime("%d/%m/%Y %H:%M:%S")
+    # -------------------------
+    # 3) Tratamento de inconsistências de datas
+    # -------------------------
 
-        # Formatando novamente para "datetime" para cálculos futuros
-        df_pedidos[coluna] = pd.to_datetime(
-                df_pedidos[coluna],
-                format="%d/%m/%Y %H:%M:%S",
-                errors='coerce'
-        )
-    
-
-    """
-    Tratamento de Dados Nulos
-    """
-
-    # Pedidos entregues e sem data de entrega
-
-    # Adicionar a mediana na data de compra
-    mediana_tempo_entrega = ((df_pedidos["order_delivered_customer_date"] - df_pedidos["order_purchase_timestamp"]).dt.days).median()
-    delta_mediana = pd.to_timedelta(mediana_tempo_entrega, unit='D')
-
-    filtro_entrega_inconsistente = (df_pedidos['order_status'] == 'delivered') & (df_pedidos['order_delivered_customer_date'].isnull())
-
-    df_pedidos.loc[filtro_entrega_inconsistente, 'order_delivered_customer_date'] = \
-        df_pedidos.loc[filtro_entrega_inconsistente, 'order_purchase_timestamp'] + delta_mediana
-
-
-    # Pedidos entregues/enviados e sem data de envio
-
-    # 1. Identificar os 2 pedidos com inconsistência de envio
-    filtro_envio_inconsistente = (df_pedidos['order_delivered_carrier_date'].isnull()) & \
-                                (df_pedidos['order_status'].isin(['shipped', 'delivered']))
-
-    # 2. Imputar a data de envio com a data de aprovação (data anterior válida conhecida)
-    df_pedidos.loc[filtro_envio_inconsistente, 'order_delivered_carrier_date'] = \
-        df_pedidos.loc[filtro_envio_inconsistente, 'order_approved_at']
-    
-
-    # Pedidos entreges/enviados e sem data de aprovação
-
-    # 1. Identificar os 14 pedidos com inconsistência de aprovação
-    filtro_aprovacao_inconsistente = (df_pedidos['order_approved_at'].isnull()) & \
-                                    (~df_pedidos['order_status'].isin(['created', 'canceled']))
-
-    # 2. Imputar a data de aprovação com o timestamp da compra (data anterior válida conhecida)
-    df_pedidos.loc[filtro_aprovacao_inconsistente, 'order_approved_at'] = \
-        df_pedidos.loc[filtro_aprovacao_inconsistente, 'order_purchase_timestamp']
-
-
-    """
-    Padronização de Texto
-    """
-
-    order_status_pt = {
-        "delivered": "entregue",
-        "invoiced": "faturado",
-        "shipped": "enviado",
-        "processing": "em processamento",
-        "unavailable": "indisponível",
-        "canceled": "cancelado",
-        "created": "criado",
-        "approved": "aprovado"
-    }
-
-    # Garantir que todos os dados estejam corretos
-    df_pedidos["order_status"] = (
-        df_pedidos["order_status"]
-        .astype("string")
-        .str.lower()
-        .str.strip()
-        .map(order_status_pt)
+    # 3.1) Pedidos delivered sem data de entrega do cliente
+    filtro_delivered_sem_data = (
+        (df["order_status"] == "delivered")
+        & (df["order_delivered_customer_date"].isna())
     )
 
-    # Se algum status não estiver no dicionário, evita ficar como NaN
-    df_pedidos["order_status"] = df_pedidos["order_status"].fillna("status_desconhecido")
+    if filtro_delivered_sem_data.any():
+        tempo_entrega = (
+            df["order_delivered_customer_date"] - df["order_purchase_timestamp"]
+        ).dt.days
+        mediana_tempo_entrega = tempo_entrega.dropna().median()
 
+        if not pd.isna(mediana_tempo_entrega):
+            delta_mediana = pd.to_timedelta(mediana_tempo_entrega, unit="D")
+            df.loc[filtro_delivered_sem_data, "order_delivered_customer_date"] = (
+                df.loc[filtro_delivered_sem_data, "order_purchase_timestamp"]
+                + delta_mediana
+            )
 
-    """
-    Criação colunas derivadas
-    """
+    # 3.2) Pedidos shipped/delivered sem data de envio ao carrier
+    filtro_envio_inconsistente = (
+        df["order_delivered_carrier_date"].isna()
+        & df["order_status"].isin(["shipped", "delivered"])
+    )
+    if filtro_envio_inconsistente.any():
+        df.loc[filtro_envio_inconsistente, "order_delivered_carrier_date"] = df.loc[
+            filtro_envio_inconsistente, "order_approved_at"
+        ]
 
-    # tempo_entrega_dias (Diferença data de entrega e data de compra)
-    df_pedidos["tempo_entrega_dias"] = (df_pedidos["order_delivered_customer_date"] - df_pedidos["order_purchase_timestamp"]).dt.days
+    # 3.3) Pedidos sem data de aprovação, mas não criados/cancelados
+    filtro_aprovacao_inconsistente = (
+        df["order_approved_at"].isna()
+        & ~df["order_status"].isin(["created", "canceled"])
+    )
+    if filtro_aprovacao_inconsistente.any():
+        df.loc[filtro_aprovacao_inconsistente, "order_approved_at"] = df.loc[
+            filtro_aprovacao_inconsistente, "order_purchase_timestamp"
+        ]
 
-    # tempo_entrega_estimado_dias (Diferença da data estimada de entrega e data de compra)
-    df_pedidos["tempo_entrega_estimado_dias"] = (df_pedidos["order_estimated_delivery_date"] - df_pedidos["order_purchase_timestamp"]).dt.days
+    # -------------------------
+    # 4) Padronização de texto em order_status
+    # -------------------------
+    if "order_status" in df.columns:
+        df["order_status"] = (
+            df["order_status"]
+            .astype(str)
+            .str.strip()
+            .str.lower()
+        )
 
-    # diferenca_entrega_dias (Diferença entre as duas colunas anteriores)
-    df_pedidos["diferenca_entrega_dias"] = df_pedidos["tempo_entrega_dias"] - df_pedidos["tempo_entrega_estimado_dias"]
+        order_status_pt = {
+            "delivered": "entregue",
+            "invoiced": "faturado",
+            "shipped": "enviado",
+            "processing": "em_processamento",
+            "unavailable": "indisponivel",
+            "canceled": "cancelado",
+            "created": "criado",
+            "approved": "aprovado",
+        }
 
-    # entrega_no_prazo (Indicador se a entrega ocorreu no prazo, se foi fora do prazo ou não ocorreu)
-    entrega_prazo = [
-        df_pedidos['diferenca_entrega_dias'].isna(),
-        df_pedidos['diferenca_entrega_dias'] <= 0,
-        df_pedidos['diferenca_entrega_dias'] > 0
+        df["order_status"] = df["order_status"].map(order_status_pt).fillna(
+            "status_desconhecido"
+        )
+
+    # -------------------------
+    # 5) Colunas derivadas
+    # -------------------------
+
+    # tempo_entrega_dias
+    df["tempo_entrega_dias"] = (
+        df["order_delivered_customer_date"] - df["order_purchase_timestamp"]
+    ).dt.days
+
+    # tempo_entrega_estimado_dias
+    df["tempo_entrega_estimado_dias"] = (
+        df["order_estimated_delivery_date"] - df["order_purchase_timestamp"]
+    ).dt.days
+
+    # diferenca_entrega_dias
+    df["diferenca_entrega_dias"] = (
+        df["tempo_entrega_dias"] - df["tempo_entrega_estimado_dias"]
+    )
+
+    # entrega_no_prazo
+    condicoes = [
+        df["diferenca_entrega_dias"].isna(),       # não tem entrega
+        df["diferenca_entrega_dias"] <= 0,         # entregou no prazo ou antes
+        df["diferenca_entrega_dias"] > 0,          # entregou depois
     ]
-
-    status_entrega = [
+    valores = [
         "Não Entregue",
         "Sim",
-        "Não"
+        "Não",
     ]
 
-    df_pedidos["entrega_no_prazo"] = np.select(
-        entrega_prazo,
-        status_entrega,
-        default=""
-    )
-    
-    cleaned_records = df_pedidos.to_dict('records')
+    df["entrega_no_prazo"] = np.select(condicoes, valores, default="Não Entregue")
+
+    # -------------------------
+    # 6) Garantir tipos numéricos e trocar NaN por None
+    # -------------------------
+    numeric_cols = [
+        "tempo_entrega_dias",
+        "tempo_entrega_estimado_dias",
+        "diferenca_entrega_dias",
+    ]
+
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Trocar NaN/NaT por None para o Pydantic aceitar
+    df = df.where(pd.notnull(df), None)
+
+    cleaned_records = df.to_dict("records")
+
+    # Garantir que qualquer float NaN restante nessas colunas vire None
+    for rec in cleaned_records:
+        for col in numeric_cols:
+            v = rec.get(col)
+            if isinstance(v, float) and (np.isnan(v) or np.isinf(v)):
+                rec[col] = None
+
+    # -------------------------
+    # 7) Retorno nos Schemas
+    # -------------------------
     return [PedidoLimpoSchema(**record) for record in cleaned_records]
 
-async def clean_pedidos_async(records: List[PedidoSchema]) -> List[PedidoLimpoSchema]:
+
+async def clean_pedidos_async(
+    records: List[PedidoSchema],
+) -> List[PedidoLimpoSchema]:
+    """Wrapper assíncrono para rodar limpeza de pedidos em thread separada."""
     return await asyncio.to_thread(clean_pedidos, records)
