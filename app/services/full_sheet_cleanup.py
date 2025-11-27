@@ -1,11 +1,13 @@
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import asyncio
 
 from app.services.clean_vendedores import clean_vendedores
 from app.services.clean_produtos import clean_produtos
 from app.services.clean_itens import clean_itens
 from app.services.clean_pedidos import clean_pedidos
+
 
 from app.schemas.data_schemas import (
     VendedorSchema,
@@ -65,42 +67,36 @@ def df_to_worksheet(ws, df: pd.DataFrame):
 
 def run_full_cleanup():
     """
-    Lê as 4 abas da planilha compartilhada,
-    aplica as funções de limpeza já existentes no projeto
-    e sobrescreve as abas com os dados limpos.
-
-    Também remove itens órfãos em `itens_pedidos` (sem pedido, produto ou vendedor correspondente).
+    Orquestra a leitura das planilhas, a aplicação das funções de limpeza
+    e a escrita dos dados limpos de volta.
     """
 
     def df_to_schema_list(df: pd.DataFrame, SchemaCls):
         """
         Converte um DataFrame em lista de Schemas Pydantic,
-        trocando "" e NaN por None (para campos opcionais)
-        e fazendo alguns ajustes de tipo básicos.
+        trocando "" e NaN por None e garantindo o tipo datetime para o Pandas.
         """
         from app.schemas.data_schemas import VendedorSchema, ItemPedidoSchema, PedidoSchema
 
         # 1) trocar strings vazias por None
         df = df.replace({"": None})
 
-        # 2) Ajustes específicos por Schema (antes de fazer where/notnull)
-        # --- VendedorSchema: garantir texto
+        # 2) Ajustes específicos por Schema (garantindo datetime para cálculos)
         if SchemaCls is VendedorSchema:
             if "seller_city" in df.columns:
                 df["seller_city"] = df["seller_city"].astype(str)
             if "seller_state" in df.columns:
                 df["seller_state"] = df["seller_state"].astype(str)
 
-        # --- ItemPedidoSchema: converter shipping_limit_date (dd/mm/aaaa) p/ datetime
+        # Para ItemPedidoSchema
         if SchemaCls is ItemPedidoSchema:
             if "shipping_limit_date" in df.columns:
                 df["shipping_limit_date"] = pd.to_datetime(
                     df["shipping_limit_date"],
-                    dayfirst=True,
                     errors="coerce",
                 )
 
-        # --- PedidoSchema: converter todas as colunas de data
+        # Para PedidoSchema
         if SchemaCls is PedidoSchema:
             date_cols = [
                 "order_purchase_timestamp",
@@ -113,7 +109,6 @@ def run_full_cleanup():
                 if col in df.columns:
                     df[col] = pd.to_datetime(
                         df[col],
-                        dayfirst=True,
                         errors="coerce",
                     )
 
@@ -125,8 +120,7 @@ def run_full_cleanup():
         return [SchemaCls(**row) for row in records]
 
 
-
-
+    # --- INÍCIO DA ORQUESTRAÇÃO ---
 
     client = get_gsheet_client()
     sh = client.open_by_key(SPREADSHEET_ID)
@@ -137,26 +131,27 @@ def run_full_cleanup():
     ws_vendedores = sh.worksheet("vendedores")
     ws_itens      = sh.worksheet("itens_pedidos")
 
-    # -------- 1) Ler para DataFrame --------
+    # -------- 1) Ler para DataFrame (Leitura Bruta) --------
     df_pedidos    = worksheet_to_df(ws_pedidos)
     df_produtos   = worksheet_to_df(ws_produtos)
     df_vendedores = worksheet_to_df(ws_vendedores)
     df_itens      = worksheet_to_df(ws_itens)
 
 
-    # -------- 2) Converter DF -> lista de Schemas (com limpeza básica) --------
+    # -------- 2) Converter DF -> lista de Schemas (Prepara os dados para a limpeza) --------
     vendedores_raw = df_to_schema_list(df_vendedores, VendedorSchema)
     produtos_raw   = df_to_schema_list(df_produtos,   ProdutoSchema)
     itens_raw      = df_to_schema_list(df_itens,      ItemPedidoSchema)
     pedidos_raw    = df_to_schema_list(df_pedidos,    PedidoSchema)
 
 
-    # -------- 3) Aplicar limpezas existentes --------
+    # -------- 3) Aplicar limpezas existentes (Onde a atuação ocorre) --------
     pedidos_limpos = clean_pedidos(pedidos_raw)
     vendedores_limpos = clean_vendedores(vendedores_raw)
     produtos_limpos = clean_produtos(produtos_raw)
 
     # DataFrames de referência para limpar itens (excluir órfãos)
+    # NOTA: Estes DFs já contêm as strings DD-MM-YYYY nas colunas de data (se clean_pedidos for a atuadora).
     df_pedidos_ref = pd.DataFrame([p.model_dump() for p in pedidos_limpos])
     df_produtos_ref = pd.DataFrame([p.model_dump() for p in produtos_limpos])
     df_vendedores_ref = pd.DataFrame([v.model_dump() for v in vendedores_limpos])
@@ -168,7 +163,7 @@ def run_full_cleanup():
         df_vendedores=df_vendedores_ref,
     )
 
-    # -------- 4) Converter de volta para DataFrame --------
+    # -------- 4) Converter de volta para DataFrame (Preparação para Escrita) --------
     df_pedidos_limpos = pd.DataFrame([p.model_dump() for p in pedidos_limpos])
     df_produtos_limpos = pd.DataFrame([p.model_dump() for p in produtos_limpos])
     df_vendedores_limpos = pd.DataFrame([v.model_dump() for v in vendedores_limpos])
@@ -182,6 +177,12 @@ def run_full_cleanup():
 
     print("Faxina completa concluída com sucesso!")
 
+
+async def run_full_cleanup_async():
+    """Wrapper assíncrono para rodar limpeza de planilhas em thread separado."""
+    print("🎬 Iniciando a faxina completa de planilhas (em thread separado)...")
+    await asyncio.to_thread(run_full_cleanup)
+    print("✅ Faxina de planilhas concluída.")
 
 if __name__ == "__main__":
     run_full_cleanup()

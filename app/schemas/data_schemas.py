@@ -68,33 +68,3 @@ class VendedorLimpoSchema(VendedorSchema):
 
 class ItemPedidoLimpoSchema(ItemPedidoSchema):
     pass
-
-
-# ==========================
-# ENVELOPE DE ENTRADA
-# ==========================
-
-class SchemaRecepcaoDatasets(BaseModel):
-    dataset1_vendedores: List[VendedorSchema] = Field(
-        ..., description="Lista de Vendedores."
-    )
-    dataset2_clientes: List[ProdutoSchema] = Field(
-        ..., description="Lista de Produtos."
-    )
-    dataset3_itens: List[ItemPedidoSchema] = Field(
-        ..., description="Lista de Itens de Pedidos."
-    )
-    dataset4_pedidos: List[PedidoSchema] = Field(
-        ..., description="Lista de Pedidos."
-    )
-
-
-# ==========================
-# ENVELOPE DE SAÍDA
-# ==========================
-
-class AllDatasetsLimpos(BaseModel):
-    vendedores: List[VendedorLimpoSchema]
-    produtos: List[ProdutosLimpoSchema]
-    transacoes: List[ItemPedidoLimpoSchema]
-    pedidos: List[PedidoLimpoSchema]

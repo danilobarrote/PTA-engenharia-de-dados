@@ -3,6 +3,7 @@ import numpy as np
 import asyncio
 from typing import List
 
+# Assumindo que PedidoSchema e PedidoLimpoSchema são importados corretamente
 from app.schemas.data_schemas import PedidoSchema, PedidoLimpoSchema
 
 
@@ -12,11 +13,7 @@ def clean_pedidos(raw_data: List[PedidoSchema]) -> List[PedidoLimpoSchema]:
     - Padroniza colunas de data/hora
     - Corrige inconsistências de datas (entrega, envio, aprovação)
     - Padroniza o campo order_status
-    - Cria colunas derivadas:
-        * tempo_entrega_dias
-        * tempo_entrega_estimado_dias
-        * diferenca_entrega_dias
-        * entrega_no_prazo
+    - Cria colunas derivadas: tempo_entrega_dias, tempo_entrega_estimado_dias, diferenca_entrega_dias, entrega_no_prazo
     - Garante que NaN/NaT sejam convertidos em None para os Schemas Pydantic.
     """
 
@@ -41,6 +38,7 @@ def clean_pedidos(raw_data: List[PedidoSchema]) -> List[PedidoLimpoSchema]:
 
     for coluna in colunas_datas:
         if coluna in df.columns:
+            # Conversão inicial para datetime (necessária para cálculos)
             df[coluna] = pd.to_datetime(df[coluna], errors="coerce")
 
     # -------------------------
@@ -108,12 +106,13 @@ def clean_pedidos(raw_data: List[PedidoSchema]) -> List[PedidoLimpoSchema]:
             "approved": "aprovado",
         }
 
-        df["order_status"] = df["order_status"].map(order_status_pt).fillna(
-            "status_desconhecido"
-        )
+        df["order_status"] = df["order_status"].replace(order_status_pt)
+
+        status_validos = set(order_status_pt.values())
+        df.loc[~df["order_status"].isin(status_validos), "order_status"] = "status_desconhecido"
 
     # -------------------------
-    # 5) Colunas derivadas
+    # 5) Colunas derivadas (Cálculos de tempo)
     # -------------------------
 
     # tempo_entrega_dias
@@ -146,8 +145,9 @@ def clean_pedidos(raw_data: List[PedidoSchema]) -> List[PedidoLimpoSchema]:
     df["entrega_no_prazo"] = np.select(condicoes, valores, default="Não Entregue")
 
     # -------------------------
-    # 6) Garantir tipos numéricos e trocar NaN por None
+    # 6) FORMATAÇÃO DE SAÍDA E GARANTIA DE TIPOS PYDANTIC
     # -------------------------
+    
     numeric_cols = [
         "tempo_entrega_dias",
         "tempo_entrega_estimado_dias",
@@ -158,21 +158,25 @@ def clean_pedidos(raw_data: List[PedidoSchema]) -> List[PedidoLimpoSchema]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Trocar NaN/NaT por None para o Pydantic aceitar
-    df = df.where(pd.notnull(df), None)
+    # 6.3) Trocar NaN/NaT por None em TODO o DataFrame
+    # Isso garante que campos de string vazia ou datetime nulo virem None.
+    df = df.where(pd.notnull(df), None)        
 
     cleaned_records = df.to_dict("records")
 
-    # Garantir que qualquer float NaN restante nessas colunas vire None
+    # 6.4) TRATAMENTO CRÍTICO: Garante que float NaN nas colunas numéricas vire None
+    # Esta é a correção para o erro 'Input should be a finite number'.
     for rec in cleaned_records:
         for col in numeric_cols:
             v = rec.get(col)
-            if isinstance(v, float) and (np.isnan(v) or np.isinf(v)):
+            # Verifica se o valor é float e se é NaN (Not a Number)
+            if isinstance(v, float) and np.isnan(v): 
                 rec[col] = None
-
+    
     # -------------------------
     # 7) Retorno nos Schemas
     # -------------------------
+    # NOTA: O Schema PedidoLimpoSchema deve ter as colunas de data definidas como Optional[str].
     return [PedidoLimpoSchema(**record) for record in cleaned_records]
 
 
