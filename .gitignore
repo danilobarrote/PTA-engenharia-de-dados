@@ -8,6 +8,8 @@ output/
 
 .env
 .env.*
+venv/
+.venv/
 
 .vscode/
 .idea/

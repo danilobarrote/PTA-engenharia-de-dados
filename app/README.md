@@ -248,6 +248,10 @@ Leitura das abas da planilha (Google Sheets):
 
 # Como Rodar o Projeto
 
+Obs: Ideal criar o venv - "py -m venv venv" ou "python -m venv venv"
+
+Como ativar o venv: .\venv\Scripts\activate
+
 ## 1. Instalar dependências
 
 Se houver requirements.txt:
