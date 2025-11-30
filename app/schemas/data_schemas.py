@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
-
+from pydantic import field_validator
 
 # ==========================
 # SCHEMAS BRUTOS (ENTRADA)
@@ -11,11 +11,11 @@ class PedidoSchema(BaseModel):
     order_id: str
     customer_id: str
     order_status: str
-    order_purchase_timestamp: datetime
-    order_approved_at: Optional[datetime]
-    order_delivered_carrier_date: Optional[datetime]
-    order_delivered_customer_date: Optional[datetime]
-    order_estimated_delivery_date: datetime
+    order_purchase_timestamp: Optional[datetime] = None 
+    order_approved_at: Optional[datetime] = None
+    order_delivered_carrier_date: Optional[datetime] = None
+    order_delivered_customer_date: Optional[datetime] = None
+    order_estimated_delivery_date: Optional[datetime] = None
 
 
 class ProdutoSchema(BaseModel):
@@ -32,9 +32,15 @@ class ProdutoSchema(BaseModel):
 
 class VendedorSchema(BaseModel):
     seller_id: str
-    seller_zip_code_prefix: int
-    seller_city: str
+    seller_zip_code_prefix: int | str | None
+    seller_city: str | int | None
     seller_state: str
+
+    @field_validator("seller_city", mode="before")
+    def force_city_to_string(cls, v):
+        if v is None:
+            return None
+        return str(v)
 
 
 class ItemPedidoSchema(BaseModel):
@@ -51,11 +57,22 @@ class ItemPedidoSchema(BaseModel):
 # SCHEMAS LIMPOS (SAÍDA)
 # ==========================
 
-class PedidoLimpoSchema(PedidoSchema):
-    tempo_entrega_dias: Optional[int]
-    tempo_entrega_estimado_dias: Optional[int]
-    diferenca_entrega_dias: Optional[float]
-    entrega_no_prazo: str
+class PedidoLimpoSchema(BaseModel):
+    order_id: str
+    customer_id: str
+    order_status: str
+    
+    # DATETIME REAL
+    order_purchase_timestamp: Optional[datetime] = None
+    order_approved_at: Optional[datetime] = None
+    order_delivered_carrier_date: Optional[datetime] = None
+    order_delivered_customer_date: Optional[datetime] = None
+    order_estimated_delivery_date: Optional[datetime] = None
+
+    tempo_entrega_dias: Optional[int] = None
+    tempo_entrega_estimado_dias: Optional[int] = None
+    diferenca_entrega_dias: Optional[float] = None
+    entrega_no_prazo: Optional[str] = None
 
 
 class ProdutosLimpoSchema(ProdutoSchema):

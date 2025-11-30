@@ -21,4 +21,5 @@ venv/
 *.log
 docker-data/
 
+/tratamento
 credentials.json
