@@ -1,63 +1,22 @@
 import pandas as pd
-import asyncio
-from typing import List
+from unidecode import unidecode
+from schemas.data_schemas import VendedorSchema, VendedorLimpoSchema
 
-from app.schemas.data_schemas import (
-    VendedorSchema,
-    VendedorLimpoSchema
-)
+def clean_single_vendedor(data: VendedorSchema) -> VendedorLimpoSchema:
+    city = str(data.seller_city) if data.seller_city else ""
+    state = str(data.seller_state) if data.seller_state else ""
 
+    # Remove acentos e Uppercase
+    city_clean = unidecode(city).upper()
+    state_clean = state.upper()
 
-def clean_vendedores(raw_data: List[VendedorSchema]) -> List[VendedorLimpoSchema]:
-    """
-    Limpeza simples da planilha de Vendedores.
-    Entrada: List[VendedorSchema]
-    Saída:   List[VendedorLimpoSchema]
-    """
-
-    if not raw_data:
-        return []
-
-    # Converte para DataFrame
-    df = pd.DataFrame([r.model_dump() for r in raw_data])
-
-    # -------------------------
-    # 1) Padronização de textos
-    # -------------------------
-    df["seller_city"] = (
-        df["seller_city"]
-        .astype("string")
-        .str.strip()
-        .str.lower()
+    return VendedorLimpoSchema(
+        **data.model_dump(exclude={'seller_city', 'seller_state'}),
+        seller_city=city_clean,
+        seller_state=state_clean
     )
 
-    df["seller_state"] = (
-        df["seller_state"]
-        .astype("string")
-        .str.strip()
-        .str.upper()
-    )
-
-    # -------------------------
-    # 2) Campos numéricos
-    # -------------------------
-    df["seller_zip_code_prefix"] = pd.to_numeric(
-        df["seller_zip_code_prefix"], errors="coerce"
-    )
-
-    # Preenchimento opcional (mediana)
-    df["seller_zip_code_prefix"] = df["seller_zip_code_prefix"].fillna(
-        df["seller_zip_code_prefix"].median()
-    )
-
-    # -------------------------
-    # 3) Retornar nos Schemas
-    # -------------------------
-    cleaned_records = df.to_dict("records")
-    return [VendedorLimpoSchema(**record) for record in cleaned_records]
-
-
-async def clean_vendedores_async(
-    records: List[VendedorSchema],
-) -> List[VendedorLimpoSchema]:
-    return await asyncio.to_thread(clean_vendedores, records)
+def clean_vendedores_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    df['seller_city'] = df['seller_city'].astype(str).apply(lambda x: unidecode(x).upper() if x else "")
+    df['seller_state'] = df['seller_state'].astype(str).str.upper()
+    return df

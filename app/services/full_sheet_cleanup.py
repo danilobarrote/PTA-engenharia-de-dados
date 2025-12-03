@@ -1,178 +1,73 @@
 import pandas as pd
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import asyncio
-import numpy as np
-from datetime import datetime
+from google.oauth2.service_account import Credentials
+import os
 
-from app.services.clean_vendedores import clean_vendedores
-from app.services.clean_produtos import clean_produtos
-from app.services.clean_itens import clean_itens
-from app.services.clean_pedidos import clean_pedidos
+from services.clean_pedidos import clean_pedidos_dataframe
+from services.clean_produtos import clean_produtos_dataframe
+from services.clean_vendedores import clean_vendedores_dataframe
+from services.clean_itens import clean_itens_dataframe
+from services.data_saver import save_df_to_sheet
 
-from app.schemas.data_schemas import (
-    VendedorSchema,
-    ProdutoSchema,
-    ItemPedidoSchema,
-    PedidoSchema,
-)
+# Configuração do Google
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+CREDENTIALS_FILE = "service_account.json"  # Certifique-se que este arquivo existe
+SPREADSHEET_ID = "15lX2IyBm3PZxoPA4a9r9LEJq81-6fI3qRYwuivDtSN8" # Alterar para o ID real
 
-# ============================
-# 1) Configuração do Google
-# ============================
-
-SCOPE = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive",
-]
-
-CREDENTIALS_FILE = "credentials.json"
-SPREADSHEET_ID = "15lX2IyBm3PZxoPA4a9r9LEJq81-6fI3qRYwuivDtSN8"
-
-
-def get_gsheet_client():
-    creds = ServiceAccountCredentials.from_json_keyfile_name(
-        CREDENTIALS_FILE, SCOPE
-    )
+def get_gspread_client():
+    creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
     return gspread.authorize(creds)
 
-
-# ============================
-# 2) Funções auxiliares
-# ============================
-
-def worksheet_to_df(ws):
-    records = ws.get_all_records()
-    return pd.DataFrame(records)
-
-
-def df_to_worksheet(ws, df: pd.DataFrame):
-    ws.clear()
-    df_clean = df.where(pd.notnull(df), "")
-    rows = [df_clean.columns.tolist()] + df_clean.astype(str).values.tolist()
-    ws.update(rows)
-
-
-# 🔥 Função universal para converter valores de DataFrame → Pydantic
-def normalize_df_for_pydantic(df: pd.DataFrame, datetime_cols: list):
-    df = df.where(df.notnull(), None)
-
-    for col in datetime_cols:
-        if col in df.columns:
-            df[col] = df[col].apply(
-                lambda x: (
-                    x.to_pydatetime()
-                    if isinstance(x, pd.Timestamp)
-                    else x if isinstance(x, datetime)
-                    else None
-                )
-            )
-
-    # conversão de numpy types → tipos nativos python
-    for col in df.columns:
-        df[col] = df[col].apply(
-            lambda x: (
-                x.item()
-                if hasattr(x, "item")
-                else x
-            )
-            if x is not None
-            else None
-        )
-
-    return df
-
-
-# ============================
-# 3) Função principal de faxina
-# ============================
-
 def run_full_cleanup():
+    print("Iniciando limpeza completa...")
+    gc = get_gspread_client()
+    sh = gc.open_by_key(SPREADSHEET_ID)
 
-    def df_to_schema_list(df: pd.DataFrame, SchemaCls):
+    # 1. Carregar Dados
+    print("Lendo abas...")
+    ws_orders = sh.worksheet("pedidos")
+    ws_items = sh.worksheet("itens_pedidos")
+    ws_products = sh.worksheet("produtos")
+    ws_sellers = sh.worksheet("vendedores")
 
-        df = df.replace({"": None})
+    df_orders = pd.DataFrame(ws_orders.get_all_records())
+    df_items = pd.DataFrame(ws_items.get_all_records())
+    df_products = pd.DataFrame(ws_products.get_all_records())
+    df_sellers = pd.DataFrame(ws_sellers.get_all_records())
 
-        # ============ COLUNAS DE DATA ============
+    # 2. Aplicar Limpezas Individuais
+    print("Aplicando regras de negócio...")
+    df_orders_clean = clean_pedidos_dataframe(df_orders)
+    df_products_clean = clean_produtos_dataframe(df_products)
+    df_sellers_clean = clean_vendedores_dataframe(df_sellers)
+    df_items_clean = clean_itens_dataframe(df_items)
 
-        if SchemaCls is PedidoSchema:
-            datetime_cols = [
-                "order_purchase_timestamp",
-                "order_approved_at",
-                "order_delivered_carrier_date",
-                "order_delivered_customer_date",
-                "order_estimated_delivery_date",
-            ]
-        elif SchemaCls is ItemPedidoSchema:
-            datetime_cols = ["shipping_limit_date"]
-        else:
-            datetime_cols = []
-
-        # Converte colunas de data
-        for col in datetime_cols:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors="coerce")
-
-        # Normaliza para datetime.datetime ou None
-        df = normalize_df_for_pydantic(df, datetime_cols)
-
-        # Monta para Pydantic
-        records = df.to_dict("records")
-        return [SchemaCls(**row) for row in records]
-
-    # --- ORQUESTRAÇÃO ---
-
-    client = get_gsheet_client()
-    sh = client.open_by_key(SPREADSHEET_ID)
-
-    ws_pedidos = sh.worksheet("pedidos")
-    ws_produtos = sh.worksheet("produtos")
-    ws_vendedores = sh.worksheet("vendedores")
-    ws_itens = sh.worksheet("itens_pedidos")
-
-    df_pedidos = worksheet_to_df(ws_pedidos)
-    df_produtos = worksheet_to_df(ws_produtos)
-    df_vendedores = worksheet_to_df(ws_vendedores)
-    df_itens = worksheet_to_df(ws_itens)
-
-    vendedores_raw = df_to_schema_list(df_vendedores, VendedorSchema)
-    produtos_raw = df_to_schema_list(df_produtos, ProdutoSchema)
-    itens_raw = df_to_schema_list(df_itens, ItemPedidoSchema)
-    pedidos_raw = df_to_schema_list(df_pedidos, PedidoSchema)
-
-    pedidos_limpos = clean_pedidos(pedidos_raw)
-    vendedores_limpos = clean_vendedores(vendedores_raw)
-    produtos_limpos = clean_produtos(produtos_raw)
-
-    df_pedidos_ref = pd.DataFrame([p.model_dump() for p in pedidos_limpos])
-    df_produtos_ref = pd.DataFrame([p.model_dump() for p in produtos_limpos])
-    df_vendedores_ref = pd.DataFrame([v.model_dump() for v in vendedores_limpos])
-
-    itens_limpos = clean_itens(
-        itens_raw,
-        df_pedidos=df_pedidos_ref,
-        df_produtos=df_produtos_ref,
-        df_vendedores=df_vendedores_ref,
-    )
-
-    df_pedidos_limpos = pd.DataFrame([p.model_dump() for p in pedidos_limpos])
-    df_produtos_limpos = pd.DataFrame([p.model_dump() for p in produtos_limpos])
-    df_vendedores_limpos = pd.DataFrame([v.model_dump() for v in vendedores_limpos])
-    df_itens_limpos = pd.DataFrame([i.model_dump() for i in itens_limpos])
-
-    df_to_worksheet(ws_pedidos, df_pedidos_limpos)
-    df_to_worksheet(ws_produtos, df_produtos_limpos)
-    df_to_worksheet(ws_vendedores, df_vendedores_limpos)
-    df_to_worksheet(ws_itens, df_itens_limpos)
-
-    print("Faxina completa concluída!")
-
-
-async def run_full_cleanup_async():
-    print("🎬 Iniciando faxina...")
-    await asyncio.to_thread(run_full_cleanup)
-    print("✔ Finalizado!")
+    # 3. Integridade Referencial (Regra Chave)
+    print("Verificando integridade referencial...")
     
+    # IDs válidos
+    valid_orders = set(df_orders_clean['order_id'])
+    valid_products = set(df_products_clean['product_id'])
+    valid_sellers = set(df_sellers_clean['seller_id'])
 
-if __name__ == "__main__":
-    run_full_cleanup()
+    # Filtrar Itens Órfãos
+    initial_items_count = len(df_items_clean)
+    
+    df_items_clean = df_items_clean[
+        df_items_clean['order_id'].isin(valid_orders) &
+        df_items_clean['product_id'].isin(valid_products) &
+        df_items_clean['seller_id'].isin(valid_sellers)
+    ]
+    
+    final_items_count = len(df_items_clean)
+    print(f"Itens removidos por falha de integridade: {initial_items_count - final_items_count}")
+
+    # 4. Salvar de volta
+    print("Salvando dados limpos...")
+    save_df_to_sheet(ws_orders, df_orders_clean)
+    save_df_to_sheet(ws_products, df_products_clean)
+    save_df_to_sheet(ws_sellers, df_sellers_clean)
+    save_df_to_sheet(ws_items, df_items_clean)
+
+    print("Limpeza completa finalizada com sucesso.")
+    return {"status": "success", "removed_items": initial_items_count - final_items_count}

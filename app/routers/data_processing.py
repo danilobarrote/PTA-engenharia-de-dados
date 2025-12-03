@@ -1,119 +1,78 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from typing import List
 
-# Importação dos serviços
-from app.services.data_saver import (
-    process_and_persist_vendedores,
-    process_and_persist_produtos,
-    process_and_persist_pedidos,
-    process_and_persist_itens,
+from schemas.data_schemas import (
+    PedidoSchema, PedidoLimpoSchema,
+    ProdutoSchema, ProdutosLimpoSchema,
+    VendedorSchema, VendedorLimpoSchema,
+    ItemPedidoSchema, ItemPedidoLimpoSchema
 )
-
-from app.schemas.data_schemas import (
-    VendedorSchema,
-    VendedorLimpoSchema,
-    ProdutoSchema,
-    ProdutosLimpoSchema,
-    ItemPedidoSchema,
-    ItemPedidoLimpoSchema,
-    PedidoSchema,
-    PedidoLimpoSchema
-)
+from services.clean_pedidos import clean_single_pedido
+from services.clean_produtos import clean_single_produto
+from services.clean_vendedores import clean_single_vendedor
+from services.clean_itens import clean_single_item
+from services.full_sheet_cleanup import run_full_cleanup
 
 router = APIRouter()
 
-# ----------------------------------------------------
-# 1. Endpoint Vendedores
-# ----------------------------------------------------
-@router.post(
-    "/process-vendedores",
-    response_model=List[VendedorLimpoSchema],
-    summary="Processa e persiste a lista de vendedores.",
-    description="Recebe a lista bruta, limpa e atualiza a base de vendedores."
-)
-async def process_vendedores(vendedores: List[VendedorSchema]):
+# ---------------------------------------------------------
+# PEDIDOS
+# ---------------------------------------------------------
+@router.post("/clean/pedido", response_model=List[PedidoLimpoSchema])
+def clean_pedidos_batch(payload: List[PedidoSchema]):
+    # Aceita: [ { "order_id": "...", ... }, { ... } ]
+    resultados = []
     try:
-        return await process_and_persist_vendedores(vendedores)
+        for item in payload:
+            resultados.append(clean_single_pedido(item))
+        return resultados
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro em vendedores: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Erro em Pedidos: {str(e)}")
 
-
-# ----------------------------------------------------
-# 2. Endpoint Produtos
-# ----------------------------------------------------
-@router.post(
-    "/process-produtos",
-    response_model=List[ProdutosLimpoSchema],
-    summary="Processa e persiste a lista de produtos.",
-    description="Recebe a lista bruta, limpa e atualiza a base de produtos."
-)
-async def process_produtos(produtos: List[ProdutoSchema]):
+# ---------------------------------------------------------
+# PRODUTOS (É AQUI QUE SEU JSON DEVE BATER)
+# ---------------------------------------------------------
+@router.post("/clean/produto", response_model=List[ProdutosLimpoSchema])
+def clean_produtos_batch(payload: List[ProdutoSchema]):
+    # Aceita: [ { "product_id": "...", "product_category_name": "..." } ]
+    resultados = []
     try:
-        return await process_and_persist_produtos(produtos)
+        for item in payload:
+            resultados.append(clean_single_produto(item))
+        return resultados
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro em produtos: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Erro em Produtos: {str(e)}")
 
-
-# ----------------------------------------------------
-# 3. Endpoint Pedidos
-# ----------------------------------------------------
-@router.post(
-    "/process-pedidos",
-    response_model=List[PedidoLimpoSchema],
-    summary="Processa e persiste a lista de pedidos.",
-    description="Recebe a lista bruta, calcula prazos e atualiza a base de pedidos."
-)
-async def process_pedidos(pedidos: List[PedidoSchema]):
+# ---------------------------------------------------------
+# VENDEDORES
+# ---------------------------------------------------------
+@router.post("/clean/vendedor", response_model=List[VendedorLimpoSchema])
+def clean_vendedores_batch(payload: List[VendedorSchema]):
+    resultados = []
     try:
-        return await process_and_persist_pedidos(pedidos)
+        for item in payload:
+            resultados.append(clean_single_vendedor(item))
+        return resultados
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro em pedidos: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Erro em Vendedores: {str(e)}")
 
-
-# ----------------------------------------------------
-# 4. Endpoint Itens de Pedidos
-# ----------------------------------------------------
-@router.post(
-    "/process-itens",
-    response_model=List[ItemPedidoLimpoSchema],
-    summary="Processa e persiste a lista de itens de pedidos.",
-    description=(
-        "IMPORTANTE: Este endpoint depende que Vendedores, Produtos e Pedidos "
-        "já tenham sido carregados no banco de dados. A validação de integridade "
-        "(FKs) será feita consultando a base existente."
-    )
-)
-async def process_itens(itens: List[ItemPedidoSchema]):
+# ---------------------------------------------------------
+# ITENS DE PEDIDO
+# ---------------------------------------------------------
+@router.post("/clean/item", response_model=List[ItemPedidoLimpoSchema])
+def clean_itens_batch(payload: List[ItemPedidoSchema]):
+    resultados = []
     try:
-        # AQUI ESTÁ A MUDANÇA CONCEITUAL:
-        #
-        # O argumento 'df_pedidos', 'df_produtos', etc. não vem mais da request HTTP.
-        #
-        # A função 'process_and_persist_itens' agora deve ser responsável por:
-        # 1. Conectar no Banco de Dados.
-        # 2. Baixar os IDs válidos de Pedidos, Produtos e Vendedores (ex: select id from table).
-        # 3. Passar esses DataFrames/Listas para a sua função 'clean_itens'.
-        #
-        # Dessa forma, mantemos a lógica de exclusão de linhas órfãs sem precisar
-        # subir todos os arquivos novamente.
-        
-        resultado = await process_and_persist_itens(itens)
-        return resultado
-
+        for item in payload:
+            resultados.append(clean_single_item(item))
+        return resultados
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erro ao processar itens: {str(e)}"
-        )
+        raise HTTPException(status_code=400, detail=f"Erro em Itens: {str(e)}")
 
-
-# ----------------------------------------------------
-# Endpoints Utilitários
-# ----------------------------------------------------
-@router.get("/", description="Mensagem de boas-vindas.")
-async def read_root():
-    return {"message": "API de Tratamento de Dados - Endpoints Segregados"}
-
-@router.get("/health")
-async def health_check():
-    return {"status": "ok"}
+# ---------------------------------------------------------
+# TRIGGER
+# ---------------------------------------------------------
+@router.post("/trigger-full-cleanup")
+def trigger_cleanup(background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_full_cleanup)
+    return {"message": "Full cleanup started in background"}
