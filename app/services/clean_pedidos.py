@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 import pandas as pd
-from schemas.data_schemas import PedidoSchema, PedidoLimpoSchema
+from ..schemas.data_schemas import PedidoSchema, PedidoLimpoSchema
 
 STATUS_TRANSLATION = {
     "delivered": "entregue",

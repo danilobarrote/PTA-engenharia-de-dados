@@ -1,5 +1,5 @@
 import pandas as pd
-from schemas.data_schemas import ItemPedidoSchema, ItemPedidoLimpoSchema
+from ..schemas.data_schemas import ItemPedidoSchema, ItemPedidoLimpoSchema
 
 def clean_single_item(data: ItemPedidoSchema) -> ItemPedidoLimpoSchema:
     return ItemPedidoLimpoSchema(**data.model_dump())

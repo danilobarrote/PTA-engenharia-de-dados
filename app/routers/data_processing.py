@@ -1,17 +1,17 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from typing import List
 
-from schemas.data_schemas import (
+from ..schemas.data_schemas import (
     PedidoSchema, PedidoLimpoSchema,
     ProdutoSchema, ProdutosLimpoSchema,
     VendedorSchema, VendedorLimpoSchema,
     ItemPedidoSchema, ItemPedidoLimpoSchema
 )
-from services.clean_pedidos import clean_single_pedido
-from services.clean_produtos import clean_single_produto
-from services.clean_vendedores import clean_single_vendedor
-from services.clean_itens import clean_single_item
-from services.full_sheet_cleanup import run_full_cleanup
+from ..services.clean_pedidos import clean_single_pedido
+from ..services.clean_produtos import clean_single_produto
+from ..services.clean_vendedores import clean_single_vendedor
+from ..services.clean_itens import clean_single_item
+from ..services.full_sheet_cleanup import run_full_cleanup
 
 router = APIRouter()
 

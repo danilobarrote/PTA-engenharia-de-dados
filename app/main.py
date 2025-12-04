@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routers import data_processing
+from .routers import data_processing
 
 app = FastAPI(
     title="API de Tratamento de Dados - O-Market",

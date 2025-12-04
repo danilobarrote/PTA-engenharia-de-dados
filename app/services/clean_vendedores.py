@@ -1,6 +1,6 @@
 import pandas as pd
 from unidecode import unidecode
-from schemas.data_schemas import VendedorSchema, VendedorLimpoSchema
+from ..schemas.data_schemas import VendedorSchema, VendedorLimpoSchema
 
 def clean_single_vendedor(data: VendedorSchema) -> VendedorLimpoSchema:
     city = str(data.seller_city) if data.seller_city else ""

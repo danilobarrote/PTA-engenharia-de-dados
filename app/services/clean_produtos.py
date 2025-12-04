@@ -1,5 +1,5 @@
 import pandas as pd
-from schemas.data_schemas import ProdutoSchema, ProdutosLimpoSchema
+from ..schemas.data_schemas import ProdutoSchema, ProdutosLimpoSchema
 
 def clean_single_produto(data: ProdutoSchema) -> ProdutosLimpoSchema:
     # Limpeza de texto

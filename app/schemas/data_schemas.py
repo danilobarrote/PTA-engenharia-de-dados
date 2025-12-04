@@ -65,7 +65,7 @@ class ItemPedidoSchema(BaseModel):
     order_item_id: int
     product_id: str
     seller_id: str
-    shipping_limit_date: datetime
+    shipping_limit_date: Optional[datetime] = None
     price: Optional[float] = None
     freight_value: Optional[float] = None
 

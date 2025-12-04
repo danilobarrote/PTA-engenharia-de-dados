@@ -3,18 +3,20 @@ import gspread
 from google.oauth2.service_account import Credentials
 import os
 
-from services.clean_pedidos import clean_pedidos_dataframe
-from services.clean_produtos import clean_produtos_dataframe
-from services.clean_vendedores import clean_vendedores_dataframe
-from services.clean_itens import clean_itens_dataframe
-from services.data_saver import save_df_to_sheet
+from .clean_pedidos import clean_pedidos_dataframe
+from .clean_produtos import clean_produtos_dataframe
+from .clean_vendedores import clean_vendedores_dataframe
+from .clean_itens import clean_itens_dataframe
+from .data_saver import save_df_to_sheet
 
 # Configuração do Google
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-CREDENTIALS_FILE = "service_account.json"  # Certifique-se que este arquivo existe
-SPREADSHEET_ID = "15lX2IyBm3PZxoPA4a9r9LEJq81-6fI3qRYwuivDtSN8" # Alterar para o ID real
+CREDENTIALS_FILE = "credentials.json"  # Use the credentials.json from project root
+SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "15lX2IyBm3PZxoPA4a9r9LEJq81-6fI3qRYwuivDtSN8")
 
 def get_gspread_client():
+    if not os.path.exists(CREDENTIALS_FILE):
+        raise FileNotFoundError(f"{CREDENTIALS_FILE} not found. Please ensure it exists in the project root.")
     creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
     return gspread.authorize(creds)
 

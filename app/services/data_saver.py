@@ -8,7 +8,7 @@ def save_df_to_sheet(sheet_object: gspread.Worksheet, df: pd.DataFrame):
     # Converter datas para string para evitar erro de serialização
     for col in df_clean.columns:
         if pd.api.types.is_datetime64_any_dtype(df[col]):
-             df_clean[col] = df_clean[col].astype(str).replace('NaT', '')
+            df_clean[col] = df_clean[col].astype(str).replace('NaT', '')
 
     data = [df_clean.columns.values.tolist()] + df_clean.values.tolist()
     
